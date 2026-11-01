@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 
@@ -125,7 +126,7 @@ def test_sha256_missing_file_returns_error(tmp_path):
 def test_failed_scan_is_not_hashed(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(directory, "_sha256", lambda p: calls.append(p) or "h")
-    build_manifest(str(tmp_path / "nope"), out=str(tmp_path / "o.csv"), workers=2)
+    build_manifest(str(tmp_path / "nope"), workers=2)
     assert calls == []
 
 
@@ -136,7 +137,7 @@ def _read(out):
 
 def test_build_manifest_contents(tree, tmp_path):
     out = tmp_path / "out.csv"
-    build_manifest(str(tree), out=str(out), workers=4)
+    build_manifest(str(tree), workers=4).write_csv(out)
     rows = _read(out)
 
     assert rows[0] == ["path", "size", "mtime", "sha256_or_error"]
@@ -157,7 +158,7 @@ def test_build_manifest_contents(tree, tmp_path):
 def test_build_manifest_missing_root_writes_error_row(tmp_path):
     out = tmp_path / "out.csv"
     missing = str(tmp_path / "nope")
-    build_manifest(missing, out=str(out), workers=2)
+    build_manifest(missing, workers=2).write_csv(out)
     rows = _read(out)
     assert len(rows) == 2
     assert rows[1][0] == missing
@@ -173,7 +174,7 @@ def test_build_manifest_unreadable_file_reports_error(tree, tmp_path):
     secret.chmod(0)
     out = tmp_path / "out.csv"
     try:
-        build_manifest(str(tree), out=str(out), workers=2)
+        build_manifest(str(tree), workers=2).write_csv(out)
     finally:
         secret.chmod(0o600)
     row = next(r for r in _read(out) if r[0] == str(secret))
@@ -182,3 +183,27 @@ def test_build_manifest_unreadable_file_reports_error(tree, tmp_path):
 
 def test_public_api_is_only_build_manifest():
     assert directory.__all__ == ["build_manifest"]
+
+
+def test_build_manifest_returns_manifest(tree):
+    m = build_manifest(str(tree), workers=2)
+    assert m.root == str(tree)
+    assert [e.path for e in m] == sorted(e.path for e in m)
+    a = next(e for e in m if e.path == str(tree / "a.txt"))
+    assert a.size == 5
+    assert a.sha256 == hashlib.sha256(b"hello").hexdigest()
+    assert a.error is None
+
+
+def test_build_manifest_missing_root_sets_error(tmp_path):
+    (e,) = build_manifest(str(tmp_path / "nope"), workers=2)
+    assert e.sha256 is None
+    assert e.size is None and e.mtime is None
+    assert e.error.startswith("ERROR:")
+
+
+def test_write_json_round_trips(tree, tmp_path):
+    m = build_manifest(str(tree), workers=2)
+    out = tmp_path / "out.json"
+    m.write_json(out)
+    assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()

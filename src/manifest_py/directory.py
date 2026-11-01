@@ -1,15 +1,16 @@
-"""Build a CSV manifest (path, size, mtime, SHA-256) of a directory tree."""
+"""Build a manifest (path, size, mtime, SHA-256) of a directory tree."""
 
-import csv
 import hashlib
 import os
 from collections.abc import Iterator
 from concurrent.futures import FIRST_COMPLETED, Executor, ThreadPoolExecutor, wait
 from typing import NamedTuple
 
+from manifest_py.manifest import Manifest, ManifestEntry
+
 __all__ = ["build_manifest"]
 
-_HEADER = ["path", "size", "mtime", "sha256_or_error"]
+_ERROR_PREFIX = "ERROR: "
 
 
 class _Entry(NamedTuple):
@@ -82,21 +83,25 @@ def _digest(entry: _Entry) -> str:
 # --- Public API -------------------------------------------------------------
 
 
-def build_manifest(root: str, out: str = "manifest.csv", workers: int = 32) -> None:
-    """Write a CSV manifest of every file under `root` to `out`.
+def build_manifest(root: str, workers: int = 32) -> Manifest:
+    """Return a Manifest of every file under `root`, sorted by path.
 
-    Columns are path, size (bytes), mtime (epoch seconds) and sha256_or_error.
-    Rows are sorted by path. Anything that could not be read (a directory, a
-    file's metadata, or a file's contents) is reported as an `ERROR: ...`
-    message in the last column rather than raising.
+    Each entry has the file's size (bytes), mtime (epoch seconds) and SHA-256.
+    Anything that could not be read (a directory, a file's metadata, or a
+    file's contents) is reported in the entry's `error` field rather than
+    raising. Serialize the result with `Manifest.write_csv` or `write_json`.
 
     `workers` is the number of threads used for scanning and hashing.
     """
     with ThreadPoolExecutor(workers) as pool:
         entries = sorted(_walk_parallel(root, pool))
         digests = pool.map(_digest, entries)
-        with open(out, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(_HEADER)
-            for e, d in zip(entries, digests):
-                w.writerow([e.path, e.size, e.mtime, d])
+        return Manifest(
+            root,
+            tuple(
+                ManifestEntry(e.path, e.size, e.mtime, error=d)
+                if d.startswith(_ERROR_PREFIX)
+                else ManifestEntry(e.path, e.size, e.mtime, sha256=d)
+                for e, d in zip(entries, digests)
+            ),
+        )
