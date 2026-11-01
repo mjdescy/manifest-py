@@ -8,6 +8,7 @@ import pytest
 
 from manifest_py import directory
 from manifest_py.directory import _Entry, _scan, _sha256, _walk_parallel, build_manifest
+from manifest_py.manifest import Manifest, ManifestBuilder, ManifestEntry
 
 
 @pytest.fixture
@@ -207,3 +208,32 @@ def test_write_json_round_trips(tree, tmp_path):
     out = tmp_path / "out.json"
     m.write_json(out)
     assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()
+
+
+def _e(path):
+    return ManifestEntry(path, 1, 1.0, sha256="h")
+
+
+def test_from_entries_sorts_by_path():
+    m = Manifest.from_entries("r", [_e("b"), _e("a"), _e("c")])
+    assert [e.path for e in m] == ["a", "b", "c"]
+
+
+def test_merge_combines_and_sorts_keeping_root():
+    a = Manifest.from_entries("ra", [_e("c"), _e("a")])
+    b = Manifest.from_entries("rb", [_e("b")])
+    m = a.merge(b)
+    assert m.root == "ra"
+    assert [e.path for e in m] == ["a", "b", "c"]
+    assert len(a) == 2 and len(b) == 1
+
+
+def test_builder_builds_sorted_snapshot():
+    b = ManifestBuilder("r")
+    b.add(_e("b"))
+    b.extend([_e("c"), _e("a")])
+    first = b.build()
+    b.add(_e("d"))
+    assert [e.path for e in first] == ["a", "b", "c"]
+    assert [e.path for e in b.build()] == ["a", "b", "c", "d"]
+    assert b.build().root == "r"

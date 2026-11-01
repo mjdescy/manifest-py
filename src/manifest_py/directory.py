@@ -96,9 +96,9 @@ def build_manifest(root: str, workers: int = 32) -> Manifest:
     with ThreadPoolExecutor(workers) as pool:
         entries = sorted(_walk_parallel(root, pool))
         digests = pool.map(_digest, entries)
-        return Manifest(
+        return Manifest.from_entries(
             root,
-            tuple(
+            (
                 ManifestEntry(e.path, e.size, e.mtime, error=d)
                 if d.startswith(_ERROR_PREFIX)
                 else ManifestEntry(e.path, e.size, e.mtime, sha256=d)
