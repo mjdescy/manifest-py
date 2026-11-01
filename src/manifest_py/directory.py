@@ -89,7 +89,7 @@ def build_manifest(root: str, workers: int = 32) -> Manifest:
     Each entry has the file's size (bytes), mtime (epoch seconds) and SHA-256.
     Anything that could not be read (a directory, a file's metadata, or a
     file's contents) is reported in the entry's `error` field rather than
-    raising. Serialize the result with `Manifest.write_csv` or `write_json`.
+    raising. Serialize the result with `manifest_py.serialize`.
 
     `workers` is the number of threads used for scanning and hashing.
     """

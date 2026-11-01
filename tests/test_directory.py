@@ -9,6 +9,7 @@ import pytest
 from manifest_py import directory
 from manifest_py.directory import _Entry, _scan, _sha256, _walk_parallel, build_manifest
 from manifest_py.manifest import Manifest, ManifestBuilder, ManifestEntry
+from manifest_py.serialize import write_csv, write_json
 
 
 @pytest.fixture
@@ -138,7 +139,7 @@ def _read(out):
 
 def test_build_manifest_contents(tree, tmp_path):
     out = tmp_path / "out.csv"
-    build_manifest(str(tree), workers=4).write_csv(out)
+    write_csv(build_manifest(str(tree), workers=4), out)
     rows = _read(out)
 
     assert rows[0] == ["path", "size", "mtime", "sha256_or_error"]
@@ -159,7 +160,7 @@ def test_build_manifest_contents(tree, tmp_path):
 def test_build_manifest_missing_root_writes_error_row(tmp_path):
     out = tmp_path / "out.csv"
     missing = str(tmp_path / "nope")
-    build_manifest(missing, workers=2).write_csv(out)
+    write_csv(build_manifest(missing, workers=2), out)
     rows = _read(out)
     assert len(rows) == 2
     assert rows[1][0] == missing
@@ -175,7 +176,7 @@ def test_build_manifest_unreadable_file_reports_error(tree, tmp_path):
     secret.chmod(0)
     out = tmp_path / "out.csv"
     try:
-        build_manifest(str(tree), workers=2).write_csv(out)
+        write_csv(build_manifest(str(tree), workers=2), out)
     finally:
         secret.chmod(0o600)
     row = next(r for r in _read(out) if r[0] == str(secret))
@@ -206,7 +207,7 @@ def test_build_manifest_missing_root_sets_error(tmp_path):
 def test_write_json_round_trips(tree, tmp_path):
     m = build_manifest(str(tree), workers=2)
     out = tmp_path / "out.json"
-    m.write_json(out)
+    write_json(m, out)
     assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()
 
 

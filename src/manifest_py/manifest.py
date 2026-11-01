@@ -1,15 +1,10 @@
-"""In-memory manifest model with serializers for different output formats."""
+"""In-memory manifest data model."""
 
-import csv
-import json
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass
-from os import PathLike
 from typing import Any
 
 __all__ = ["Manifest", "ManifestBuilder", "ManifestEntry"]
-
-_CSV_HEADER = ["path", "size", "mtime", "sha256_or_error"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,19 +50,6 @@ class Manifest:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible dict of the manifest."""
         return {"root": self.root, "entries": [asdict(e) for e in self.entries]}
-
-    def write_csv(self, out: str | PathLike[str]) -> None:
-        """Write the manifest as CSV; the last column holds the digest or error."""
-        with open(out, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(_CSV_HEADER)
-            for e in self.entries:
-                w.writerow([e.path, e.size, e.mtime, e.error or e.sha256])
-
-    def write_json(self, out: str | PathLike[str], indent: int | None = 2) -> None:
-        """Write the manifest as JSON."""
-        with open(out, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=indent)
 
 
 class ManifestBuilder:
