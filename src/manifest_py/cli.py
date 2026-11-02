@@ -36,9 +36,11 @@ def main(
         Path | None,
         typer.Option("--output", "-o", help="Write to this file instead of stdout."),
     ] = None,
-):
+) -> None:
     """Create a manifest (path, size, mtime, SHA-256) of directory trees."""
-    manifest = Manifest.union(*(ManifestBuilder.from_directory(str(r)) for r in roots))
+    manifest: Manifest = Manifest.union(
+        *(ManifestBuilder.from_directory(str(r)) for r in roots)
+    )
     try:
         if output is not None:
             if format is Format.json:

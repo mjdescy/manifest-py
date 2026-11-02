@@ -1,14 +1,15 @@
 import csv
 import io
 import json
+from pathlib import Path
 
 from manifest_py.manifest import Manifest, ManifestEntry
 from manifest_py.serialize import dump_csv, dump_json, write_csv, write_json
 
-HEADER = ["path", "size", "mtime", "sha256_or_error"]
+HEADER: list[str] = ["path", "size", "mtime", "sha256_or_error"]
 
 
-def _manifest():
+def _manifest() -> Manifest:
     return Manifest.from_entries(
         "/r",
         [
@@ -18,10 +19,10 @@ def _manifest():
     )
 
 
-def test_dump_csv_rows():
-    buf = io.StringIO()
+def test_dump_csv_rows() -> None:
+    buf: io.StringIO = io.StringIO()
     dump_csv(_manifest(), buf)
-    rows = list(csv.reader(io.StringIO(buf.getvalue())))
+    rows: list[list[str]] = list(csv.reader(io.StringIO(buf.getvalue())))
     assert rows == [
         HEADER,
         ["/r/a", "", "", "ERROR: boom"],
@@ -29,37 +30,38 @@ def test_dump_csv_rows():
     ]
 
 
-def test_dump_csv_empty_manifest_has_only_header():
-    buf = io.StringIO()
+def test_dump_csv_empty_manifest_has_only_header() -> None:
+    buf: io.StringIO = io.StringIO()
     dump_csv(Manifest("/r", ()), buf)
     assert list(csv.reader(io.StringIO(buf.getvalue()))) == [HEADER]
 
 
-def test_dump_json_matches_to_dict():
-    m = _manifest()
-    buf = io.StringIO()
+def test_dump_json_matches_to_dict() -> None:
+    m: Manifest = _manifest()
+    buf: io.StringIO = io.StringIO()
     dump_json(m, buf)
     assert json.loads(buf.getvalue()) == m.to_dict()
 
 
-def test_dump_json_indent():
-    m = _manifest()
-    compact, pretty = io.StringIO(), io.StringIO()
+def test_dump_json_indent() -> None:
+    m: Manifest = _manifest()
+    compact: io.StringIO = io.StringIO()
+    pretty: io.StringIO = io.StringIO()
     dump_json(m, compact, indent=None)
     dump_json(m, pretty)
     assert "\n" not in compact.getvalue()
     assert "\n" in pretty.getvalue()
 
 
-def test_write_csv_file(tmp_path):
-    out = tmp_path / "m.csv"
+def test_write_csv_file(tmp_path: Path) -> None:
+    out: Path = tmp_path / "m.csv"
     write_csv(_manifest(), out)
     with open(out, newline="", encoding="utf-8") as f:
         assert next(csv.reader(f)) == HEADER
 
 
-def test_write_json_file(tmp_path):
-    m = _manifest()
-    out = tmp_path / "m.json"
+def test_write_json_file(tmp_path: Path) -> None:
+    m: Manifest = _manifest()
+    out: Path = tmp_path / "m.json"
     write_json(m, out)
     assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()

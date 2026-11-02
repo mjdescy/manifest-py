@@ -5,7 +5,14 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Iterable, Iterator
-from concurrent.futures import FIRST_COMPLETED, Executor, ThreadPoolExecutor, wait
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    Executor,
+    Future,
+    ThreadPoolExecutor,
+    wait,
+)
+from os import DirEntry
 from typing import NamedTuple
 
 from manifest_py.manifest import Manifest, ManifestEntry
@@ -35,13 +42,15 @@ def _scan(path: str) -> tuple[list[_Entry], list[str]]:
     files: list[_Entry] = []
     dirs: list[str] = []
     try:
+        it: Iterator[DirEntry[str]]
+        e: DirEntry[str]
         with os.scandir(path) as it:
             for e in it:
                 try:
                     if e.is_dir(follow_symlinks=False):
                         dirs.append(e.path)
                     elif e.is_file(follow_symlinks=False):
-                        st = e.stat(follow_symlinks=False)
+                        st: os.stat_result = e.stat(follow_symlinks=False)
                         files.append(_Entry(e.path, st.st_size, st.st_mtime))
                 except OSError as err:
                     files.append(_Entry(e.path, None, None, f"{_ERROR_PREFIX}{err}"))
@@ -56,10 +65,12 @@ def _walk_parallel(root: str, pool: Executor) -> Iterator[_Entry]:
 
     Order is not deterministic.
     """
-    pending = {pool.submit(_scan, root)}
+    pending: set[Future[tuple[list[_Entry], list[str]]]] = {pool.submit(_scan, root)}
     while pending:
         done, pending = wait(pending, return_when=FIRST_COMPLETED)
         for fut in done:
+            files: list[_Entry]
+            dirs: list[str]
             files, dirs = fut.result()
             yield from files
             pending |= {pool.submit(_scan, d) for d in dirs}
@@ -89,7 +100,7 @@ class ManifestBuilder:
     """Mutable collector of entries that produces an immutable Manifest."""
 
     def __init__(self, root: str) -> None:
-        self.root = root
+        self.root: str = root
         self._entries: list[ManifestEntry] = []
 
     @classmethod
@@ -103,10 +114,10 @@ class ManifestBuilder:
 
         `workers` is the number of threads used for scanning and hashing.
         """
-        builder = cls(root)
+        builder: ManifestBuilder = cls(root)
         with ThreadPoolExecutor(workers) as pool:
-            entries = list(_walk_parallel(root, pool))
-            digests = pool.map(_digest, entries)
+            entries: list[_Entry] = list(_walk_parallel(root, pool))
+            digests: Iterator[str] = pool.map(_digest, entries)
             builder.extend(
                 ManifestEntry(e.path, e.size, e.mtime, error=d)
                 if d.startswith(_ERROR_PREFIX)

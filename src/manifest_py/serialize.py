@@ -2,6 +2,7 @@
 
 import csv
 import json
+from _csv import Writer
 from os import PathLike
 from typing import TextIO
 
@@ -14,7 +15,7 @@ _CSV_HEADER = ["path", "size", "mtime", "sha256_or_error"]
 
 def dump_csv(manifest: Manifest, fp: TextIO) -> None:
     """Write the manifest as CSV to a text stream (opened with newline="")."""
-    w = csv.writer(fp)
+    w: Writer = csv.writer(fp)
     w.writerow(_CSV_HEADER)
     for e in manifest:
         w.writerow([e.path, e.size, e.mtime, e.error or e.sha256])

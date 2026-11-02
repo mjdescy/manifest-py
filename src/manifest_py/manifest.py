@@ -75,9 +75,9 @@ class Manifest:
         self_key: Callable[[ManifestEntry], str],
         other_key: Callable[[ManifestEntry], str],
     ) -> ManifestDiff:
-        mine = {self_key(e): e for e in self.entries}
-        theirs = {other_key(e): e for e in other.entries}
-        changed = [
+        mine: dict[str, ManifestEntry] = {self_key(e): e for e in self.entries}
+        theirs: dict[str, ManifestEntry] = {other_key(e): e for e in other.entries}
+        changed: list[tuple[ManifestEntry, ManifestEntry]] = [
             (e, theirs[k])
             for k, e in mine.items()
             if k in theirs and _content(e) != _content(theirs[k])
@@ -107,7 +107,7 @@ class Manifest:
         if root is None:
             if not manifests:
                 raise ValueError("union() needs at least one manifest or a root")
-            roots = {m.root for m in manifests}
+            roots: set[str] = {m.root for m in manifests}
             root = (
                 roots.pop()
                 if len(roots) == 1
