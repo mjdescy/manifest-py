@@ -1,14 +1,16 @@
-"""Build a manifest (path, size, mtime, SHA-256) of a directory tree."""
+"""Build a Manifest, including from a directory tree (path, size, mtime, SHA-256)."""
+
+from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Executor, ThreadPoolExecutor, wait
 from typing import NamedTuple
 
 from manifest_py.manifest import Manifest, ManifestEntry
 
-__all__ = ["build_manifest"]
+__all__ = ["ManifestBuilder"]
 
 _ERROR_PREFIX = "ERROR: "
 
@@ -42,10 +44,10 @@ def _scan(path: str) -> tuple[list[_Entry], list[str]]:
                         st = e.stat(follow_symlinks=False)
                         files.append(_Entry(e.path, st.st_size, st.st_mtime))
                 except OSError as err:
-                    files.append(_Entry(e.path, None, None, f"ERROR: {err}"))
+                    files.append(_Entry(e.path, None, None, f"{_ERROR_PREFIX}{err}"))
     except OSError as err:
         # Entries gathered before the failure are kept alongside the error.
-        files.append(_Entry(path, None, None, f"ERROR: {err}"))
+        files.append(_Entry(path, None, None, f"{_ERROR_PREFIX}{err}"))
     return files, dirs
 
 
@@ -72,7 +74,7 @@ def _sha256(path: str) -> str:
         with open(path, "rb") as f:
             return hashlib.file_digest(f, "sha256").hexdigest()
     except OSError as err:
-        return f"ERROR: {err}"
+        return f"{_ERROR_PREFIX}{err}"
 
 
 def _digest(entry: _Entry) -> str:
@@ -80,28 +82,50 @@ def _digest(entry: _Entry) -> str:
     return entry.error or _sha256(entry.path)
 
 
-# --- Public API -------------------------------------------------------------
+# --- Builder ----------------------------------------------------------------
 
 
-def build_manifest(root: str, workers: int = 32) -> Manifest:
-    """Return a Manifest of every file under `root`, sorted by path.
+class ManifestBuilder:
+    """Mutable collector of entries that produces an immutable Manifest."""
 
-    Each entry has the file's size (bytes), mtime (epoch seconds) and SHA-256.
-    Anything that could not be read (a directory, a file's metadata, or a
-    file's contents) is reported in the entry's `error` field rather than
-    raising. Serialize the result with `manifest_py.serialize`.
+    def __init__(self, root: str) -> None:
+        self.root = root
+        self._entries: list[ManifestEntry] = []
 
-    `workers` is the number of threads used for scanning and hashing.
-    """
-    with ThreadPoolExecutor(workers) as pool:
-        entries = sorted(_walk_parallel(root, pool))
-        digests = pool.map(_digest, entries)
-        return Manifest.from_entries(
-            root,
-            (
+    @classmethod
+    def from_directory(cls, root: str, workers: int = 32) -> Manifest:
+        """Return a Manifest of every file under `root`, sorted by path.
+
+        Each entry has the file's size (bytes), mtime (epoch seconds) and
+        SHA-256. Anything that could not be read (a directory, a file's
+        metadata, or a file's contents) is reported in the entry's `error`
+        field rather than raising.
+
+        `workers` is the number of threads used for scanning and hashing.
+        """
+        builder = cls(root)
+        with ThreadPoolExecutor(workers) as pool:
+            entries = list(_walk_parallel(root, pool))
+            digests = pool.map(_digest, entries)
+            builder.extend(
                 ManifestEntry(e.path, e.size, e.mtime, error=d)
                 if d.startswith(_ERROR_PREFIX)
                 else ManifestEntry(e.path, e.size, e.mtime, sha256=d)
                 for e, d in zip(entries, digests)
-            ),
-        )
+            )
+        return builder.build()
+
+    def add(self, entry: ManifestEntry) -> None:
+        """Add one entry."""
+        self._entries.append(entry)
+
+    def extend(self, entries: Iterable[ManifestEntry]) -> None:
+        """Add several entries."""
+        self._entries.extend(entries)
+
+    def build(self) -> Manifest:
+        """Return a snapshot of the entries added so far.
+
+        Later additions to the builder do not affect manifests already built.
+        """
+        return Manifest.from_entries(self.root, self._entries)

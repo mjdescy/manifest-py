@@ -4,7 +4,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
 
-__all__ = ["Manifest", "ManifestBuilder", "ManifestEntry"]
+__all__ = ["Manifest", "ManifestEntry"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,26 +50,3 @@ class Manifest:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible dict of the manifest."""
         return {"root": self.root, "entries": [asdict(e) for e in self.entries]}
-
-
-class ManifestBuilder:
-    """Mutable collector of entries that produces an immutable Manifest."""
-
-    def __init__(self, root: str) -> None:
-        self.root = root
-        self._entries: list[ManifestEntry] = []
-
-    def add(self, entry: ManifestEntry) -> None:
-        """Add one entry."""
-        self._entries.append(entry)
-
-    def extend(self, entries: Iterable[ManifestEntry]) -> None:
-        """Add several entries."""
-        self._entries.extend(entries)
-
-    def build(self) -> Manifest:
-        """Return a snapshot of the entries added so far.
-
-        Later additions to the builder do not affect manifests already built.
-        """
-        return Manifest.from_entries(self.root, self._entries)

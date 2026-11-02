@@ -6,10 +6,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from manifest_py import directory
-from manifest_py.directory import _Entry, _scan, _sha256, _walk_parallel, build_manifest
-from manifest_py.manifest import Manifest, ManifestBuilder, ManifestEntry
+from manifest_py import builder
+from manifest_py.builder import ManifestBuilder, _Entry, _scan, _sha256, _walk_parallel
+from manifest_py.manifest import Manifest, ManifestEntry
 from manifest_py.serialize import write_csv, write_json
+
+
+def _build(root, workers=32):
+    return ManifestBuilder.from_directory(root, workers)
 
 
 @pytest.fixture
@@ -86,7 +90,7 @@ def test_scan_stat_failure_only_affects_that_file(tree, monkeypatch):
             raise PermissionError("denied")
 
     (tree / "bad.txt").write_text("x")
-    monkeypatch.setattr(directory.os, "scandir", fake_scandir)
+    monkeypatch.setattr(builder.os, "scandir", fake_scandir)
     files, dirs = _scan(str(tree))
     by_path = {f.path: f for f in files}
     assert by_path[str(tree / "bad.txt")].error.startswith("ERROR:")
@@ -127,8 +131,8 @@ def test_sha256_missing_file_returns_error(tmp_path):
 
 def test_failed_scan_is_not_hashed(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(directory, "_sha256", lambda p: calls.append(p) or "h")
-    build_manifest(str(tmp_path / "nope"), workers=2)
+    monkeypatch.setattr(builder, "_sha256", lambda p: calls.append(p) or "h")
+    _build(str(tmp_path / "nope"), workers=2)
     assert calls == []
 
 
@@ -137,9 +141,9 @@ def _read(out):
         return list(csv.reader(f))
 
 
-def test_build_manifest_contents(tree, tmp_path):
+def test_from_directory_contents(tree, tmp_path):
     out = tmp_path / "out.csv"
-    write_csv(build_manifest(str(tree), workers=4), out)
+    write_csv(_build(str(tree), workers=4), out)
     rows = _read(out)
 
     assert rows[0] == ["path", "size", "mtime", "sha256_or_error"]
@@ -157,10 +161,10 @@ def test_build_manifest_contents(tree, tmp_path):
     assert a[3] == hashlib.sha256(b"hello").hexdigest()
 
 
-def test_build_manifest_missing_root_writes_error_row(tmp_path):
+def test_from_directory_missing_root_writes_error_row(tmp_path):
     out = tmp_path / "out.csv"
     missing = str(tmp_path / "nope")
-    write_csv(build_manifest(missing, workers=2), out)
+    write_csv(_build(missing, workers=2), out)
     rows = _read(out)
     assert len(rows) == 2
     assert rows[1][0] == missing
@@ -168,7 +172,7 @@ def test_build_manifest_missing_root_writes_error_row(tmp_path):
     assert rows[1][3].startswith("ERROR:")
 
 
-def test_build_manifest_unreadable_file_reports_error(tree, tmp_path):
+def test_from_directory_unreadable_file_reports_error(tree, tmp_path):
     if os.geteuid() == 0:
         pytest.skip("root can read anything")
     secret = tree / "secret.txt"
@@ -176,19 +180,19 @@ def test_build_manifest_unreadable_file_reports_error(tree, tmp_path):
     secret.chmod(0)
     out = tmp_path / "out.csv"
     try:
-        write_csv(build_manifest(str(tree), workers=2), out)
+        write_csv(_build(str(tree), workers=2), out)
     finally:
         secret.chmod(0o600)
     row = next(r for r in _read(out) if r[0] == str(secret))
     assert row[3].startswith("ERROR:")
 
 
-def test_public_api_is_only_build_manifest():
-    assert directory.__all__ == ["build_manifest"]
+def test_public_api_is_only_manifest_builder():
+    assert builder.__all__ == ["ManifestBuilder"]
 
 
-def test_build_manifest_returns_manifest(tree):
-    m = build_manifest(str(tree), workers=2)
+def test_from_directory_returns_manifest(tree):
+    m = _build(str(tree), workers=2)
     assert m.root == str(tree)
     assert [e.path for e in m] == sorted(e.path for e in m)
     a = next(e for e in m if e.path == str(tree / "a.txt"))
@@ -197,15 +201,15 @@ def test_build_manifest_returns_manifest(tree):
     assert a.error is None
 
 
-def test_build_manifest_missing_root_sets_error(tmp_path):
-    (e,) = build_manifest(str(tmp_path / "nope"), workers=2)
+def test_from_directory_missing_root_sets_error(tmp_path):
+    (e,) = _build(str(tmp_path / "nope"), workers=2)
     assert e.sha256 is None
     assert e.size is None and e.mtime is None
     assert e.error.startswith("ERROR:")
 
 
 def test_write_json_round_trips(tree, tmp_path):
-    m = build_manifest(str(tree), workers=2)
+    m = _build(str(tree), workers=2)
     out = tmp_path / "out.json"
     write_json(m, out)
     assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()
@@ -238,3 +242,11 @@ def test_builder_builds_sorted_snapshot():
     assert [e.path for e in first] == ["a", "b", "c"]
     assert [e.path for e in b.build()] == ["a", "b", "c", "d"]
     assert b.build().root == "r"
+
+
+def test_from_directory_returns_sorted_manifest(tree):
+    m = ManifestBuilder.from_directory(str(tree), workers=2)
+    assert isinstance(m, Manifest)
+    assert m.root == str(tree)
+    paths = [e.path for e in m]
+    assert paths == sorted(paths) and len(paths) == 3
