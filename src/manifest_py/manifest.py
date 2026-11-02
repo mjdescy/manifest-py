@@ -1,7 +1,7 @@
 """In-memory manifest data model."""
 
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass
 from typing import Any, NamedTuple
 
@@ -21,10 +21,6 @@ class ManifestEntry:
     mtime: float | None
     sha256: str | None = None
     error: str | None = None
-
-
-def _relpath(entry: ManifestEntry, root: str) -> str:
-    return os.path.relpath(entry.path, root)
 
 
 def _content(entry: ManifestEntry) -> tuple[int | None, str | None, str | None]:
@@ -47,12 +43,40 @@ class Manifest:
     def diff(self, other: Manifest) -> ManifestDiff:
         """Compare this (old) manifest against `other` (new).
 
-        Files are matched by path relative to each manifest's `root`, so two
-        trees at different locations can be compared. A matched file counts as
+        Files are matched by their full `path`. A matched file counts as
         changed when its size, SHA-256 or error differs; mtime is ignored.
+        To compare trees at different locations, use `diff_relative_root`.
         """
-        mine = {_relpath(e, self.root): e for e in self.entries}
-        theirs = {_relpath(e, other.root): e for e in other.entries}
+        return self._diff(other, lambda e: e.path, lambda e: e.path)
+
+    def diff_relative_root(
+        self,
+        other: Manifest,
+        self_root: str | None = None,
+        other_root: str | None = None,
+    ) -> ManifestDiff:
+        """Like `diff`, but match files by path relative to a root.
+
+        `self_root` and `other_root` are the path prefixes excluded from the
+        comparison for this manifest and for `other`. Each defaults to that
+        manifest's own `root`.
+        """
+        self_root = self.root if self_root is None else self_root
+        other_root = other.root if other_root is None else other_root
+        return self._diff(
+            other,
+            lambda e: os.path.relpath(e.path, self_root),
+            lambda e: os.path.relpath(e.path, other_root),
+        )
+
+    def _diff(
+        self,
+        other: Manifest,
+        self_key: Callable[[ManifestEntry], str],
+        other_key: Callable[[ManifestEntry], str],
+    ) -> ManifestDiff:
+        mine = {self_key(e): e for e in self.entries}
+        theirs = {other_key(e): e for e in other.entries}
         changed = [
             (e, theirs[k])
             for k, e in mine.items()

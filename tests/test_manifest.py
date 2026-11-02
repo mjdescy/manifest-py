@@ -102,20 +102,22 @@ def test_diff_of_identical_manifests_is_empty():
 
 
 def test_diff_classifies_removed_added_changed():
-    old = _m("old", _e("old/gone"), _e("old/same"), _e("old/mod", "1"))
-    new = _m("new", _e("new/same"), _e("new/mod", "2"), _e("new/fresh"))
+    old = _m("r", _e("r/gone"), _e("r/same"), _e("r/mod", "1"))
+    new = _m("r", _e("r/same"), _e("r/mod", "2"), _e("r/fresh"))
     d = old.diff(new)
-    assert paths(d.removed) == ["old/gone"]
-    assert paths(d.added) == ["new/fresh"]
+    assert paths(d.removed) == ["r/gone"]
+    assert paths(d.added) == ["r/fresh"]
     assert [e.sha256 for e in d.changed_before] == ["1"]
     assert [e.sha256 for e in d.changed_after] == ["2"]
 
 
-def test_diff_matches_files_by_path_relative_to_root():
+def test_diff_compares_absolute_paths():
     old = _m("/a", _e("/a/sub/f"))
     new = _m("/b", _e("/b/sub/f"))
     d = old.diff(new)
-    assert len(d.removed) == len(d.added) == len(d.changed_after) == 0
+    assert paths(d.removed) == ["/a/sub/f"]
+    assert paths(d.added) == ["/b/sub/f"]
+    assert len(d.changed_before) == len(d.changed_after) == 0
 
 
 def test_diff_result_manifests_carry_their_side_root():
@@ -134,7 +136,7 @@ def test_diff_ignores_mtime_but_detects_size_hash_and_error_changes():
 def test_diff_changed_sides_are_parallel_and_sorted():
     old = _m("o", _e("o/b", "1"), _e("o/a", "1"))
     new = _m("n", _e("n/a", "2"), _e("n/b", "2"))
-    d = old.diff(new)
+    d = old.diff_relative_root(new)
     assert paths(d.changed_before) == ["o/a", "o/b"]
     assert paths(d.changed_after) == ["n/a", "n/b"]
 
@@ -143,3 +145,39 @@ def test_diff_is_directional():
     a, b = _m("r", _e("r/x")), _m("r", _e("r/y"))
     assert paths(a.diff(b).removed) == ["r/x"]
     assert paths(b.diff(a).added) == ["r/x"]
+
+
+# --- diff_relative_root -----------------------------------------------------
+
+
+def test_diff_relative_root_matches_across_roots_using_manifest_roots():
+    old = _m("/a", _e("/a/sub/f", "1"), _e("/a/gone"), _e("/a/same"))
+    new = _m("/b", _e("/b/sub/f", "2"), _e("/b/fresh"), _e("/b/same"))
+    d = old.diff_relative_root(new)
+    assert paths(d.removed) == ["/a/gone"]
+    assert paths(d.added) == ["/b/fresh"]
+    assert paths(d.changed_before) == ["/a/sub/f"]
+    assert paths(d.changed_after) == ["/b/sub/f"]
+    assert d.removed.root == "/a" and d.added.root == "/b"
+
+
+def test_diff_relative_root_explicit_roots_override_manifest_roots():
+    old = _m("/x", _e("/x/a/f"), _e("/x/a/g"))
+    new = _m("/x", _e("/x/b/f", "2"), _e("/x/b/h"))
+    d = old.diff_relative_root(new, self_root="/x/a", other_root="/x/b")
+    assert paths(d.removed) == ["/x/a/g"]
+    assert paths(d.added) == ["/x/b/h"]
+    assert paths(d.changed_after) == ["/x/b/f"]
+
+
+def test_diff_relative_root_only_one_root_overridden():
+    old = _m("/x", _e("/x/a/f"))
+    new = _m("/b", _e("/b/f"))
+    d = old.diff_relative_root(new, self_root="/x/a")
+    assert all(len(part) == 0 for part in d)
+
+
+def test_diff_relative_root_same_root_equals_diff():
+    old = _m("r", _e("r/a", "1"), _e("r/b"))
+    new = _m("r", _e("r/a", "2"), _e("r/c"))
+    assert old.diff_relative_root(new) == old.diff(new)
