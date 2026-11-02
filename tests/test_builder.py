@@ -250,3 +250,13 @@ def test_from_directory_returns_sorted_manifest(tree):
     assert m.root == str(tree)
     paths = [e.path for e in m]
     assert paths == sorted(paths) and len(paths) == 3
+
+
+def test_merge_deduplicates_by_path_preferring_self():
+    mine = ManifestEntry("x", 1, 1.0, sha256="mine")
+    theirs = ManifestEntry("x", 2, 2.0, sha256="theirs")
+    a = Manifest.from_entries("ra", [mine, _e("a")])
+    b = Manifest.from_entries("rb", [theirs, _e("b")])
+    m = a.merge(b)
+    assert [e.path for e in m] == ["a", "b", "x"]
+    assert m.entries[2] is mine

@@ -37,9 +37,11 @@ class Manifest:
     def merge(self, other: Manifest) -> Manifest:
         """Return a new manifest with both manifests' entries, sorted by path.
 
-        The result keeps this manifest's `root`. Entries are not deduplicated.
+        The result keeps this manifest's `root`. Entries are deduplicated by
+        path; when both manifests have the same path, this manifest's entry wins.
         """
-        return Manifest.from_entries(self.root, (*self.entries, *other.entries))
+        by_path = {e.path: e for e in (*other.entries, *self.entries)}
+        return Manifest.from_entries(self.root, by_path.values())
 
     def __iter__(self) -> Iterator[ManifestEntry]:
         return iter(self.entries)
