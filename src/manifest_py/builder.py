@@ -99,8 +99,7 @@ def _digest(entry: _Entry) -> str:
 class ManifestBuilder:
     """Mutable collector of entries that produces an immutable Manifest."""
 
-    def __init__(self, root: str) -> None:
-        self.root: str = root
+    def __init__(self) -> None:
         self._entries: list[ManifestEntry] = []
 
     @classmethod
@@ -114,7 +113,7 @@ class ManifestBuilder:
 
         `workers` is the number of threads used for scanning and hashing.
         """
-        builder: ManifestBuilder = cls(root)
+        builder: ManifestBuilder = cls()
         with ThreadPoolExecutor(workers) as pool:
             entries: list[_Entry] = list(_walk_parallel(root, pool))
             digests: Iterator[str] = pool.map(_digest, entries)
@@ -139,4 +138,4 @@ class ManifestBuilder:
 
         Later additions to the builder do not affect manifests already built.
         """
-        return Manifest.from_entries(self.root, self._entries)
+        return Manifest.from_entries(self._entries)

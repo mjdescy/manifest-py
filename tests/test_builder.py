@@ -216,7 +216,6 @@ def test_public_api_is_only_manifest_builder() -> None:
 
 def test_from_directory_returns_manifest(tree: Path) -> None:
     m: Manifest = _build(str(tree), workers=2)
-    assert m.root == str(tree)
     assert [e.path for e in m] == sorted(e.path for e in m)
     a: ManifestEntry = next(e for e in m if e.path == str(tree / "a.txt"))
     assert a.size == 5
@@ -244,19 +243,17 @@ def _e(path: str) -> ManifestEntry:
 
 
 def test_builder_builds_sorted_snapshot() -> None:
-    b: ManifestBuilder = ManifestBuilder("r")
+    b: ManifestBuilder = ManifestBuilder()
     b.add(_e("b"))
     b.extend([_e("c"), _e("a")])
     first: Manifest = b.build()
     b.add(_e("d"))
     assert [e.path for e in first] == ["a", "b", "c"]
     assert [e.path for e in b.build()] == ["a", "b", "c", "d"]
-    assert b.build().root == "r"
 
 
 def test_from_directory_returns_sorted_manifest(tree: Path) -> None:
     m: Manifest = ManifestBuilder.from_directory(str(tree), workers=2)
     assert isinstance(m, Manifest)
-    assert m.root == str(tree)
     paths: list[str] = [e.path for e in m]
     assert paths == sorted(paths) and len(paths) == 3

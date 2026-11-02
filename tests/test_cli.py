@@ -2,7 +2,6 @@ import csv
 import hashlib
 import io
 import json
-import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -42,7 +41,6 @@ def test_default_is_json_to_stdout(tree_a: Path) -> None:
     result: Result = runner.invoke(app, [str(tree_a)])
     assert result.exit_code == 0
     data: dict[str, Any] = json.loads(result.stdout)
-    assert data["root"] == str(tree_a)
     assert paths(data) == [str(tree_a / "one.txt"), str(tree_a / "sub" / "two.txt")]
     first: dict[str, Any] = data["entries"][0]
     assert first["size"] == 5
@@ -167,11 +165,6 @@ def test_one_bad_root_among_good_fails(tree_a: Path, tmp_path: Path) -> None:
     result: Result = runner.invoke(app, [str(tree_a), str(tmp_path / "nope")])
     assert result.exit_code == 2
     assert result.stdout == ""
-
-
-def test_multiple_roots_root_is_common_ancestor(tree_a: Path, tree_b: Path) -> None:
-    result: Result = runner.invoke(app, [str(tree_a), str(tree_b)])
-    assert json.loads(result.stdout)["root"] == os.path.commonpath([tree_a, tree_b])
 
 
 def test_overlapping_roots_deduplicate_files(tree_a: Path) -> None:

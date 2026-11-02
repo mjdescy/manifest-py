@@ -11,7 +11,6 @@ HEADER: list[str] = ["path", "size", "mtime", "sha256_or_error"]
 
 def _manifest() -> Manifest:
     return Manifest.from_entries(
-        "/r",
         [
             ManifestEntry("/r/b", 2, 2.5, sha256="hb"),
             ManifestEntry("/r/a", None, None, error="ERROR: boom"),
@@ -32,7 +31,7 @@ def test_dump_csv_rows() -> None:
 
 def test_dump_csv_empty_manifest_has_only_header() -> None:
     buf: io.StringIO = io.StringIO()
-    dump_csv(Manifest("/r", ()), buf)
+    dump_csv(Manifest(()), buf)
     assert list(csv.reader(io.StringIO(buf.getvalue()))) == [HEADER]
 
 
