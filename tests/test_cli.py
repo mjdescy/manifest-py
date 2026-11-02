@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 
 import pytest
 from typer.testing import CliRunner
@@ -161,3 +162,13 @@ def test_one_bad_root_among_good_fails(tree_a, tmp_path):
     result = runner.invoke(app, [str(tree_a), str(tmp_path / "nope")])
     assert result.exit_code == 2
     assert result.stdout == ""
+
+
+def test_multiple_roots_root_is_common_ancestor(tree_a, tree_b):
+    result = runner.invoke(app, [str(tree_a), str(tree_b)])
+    assert json.loads(result.stdout)["root"] == os.path.commonpath([tree_a, tree_b])
+
+
+def test_overlapping_roots_deduplicate_files(tree_a):
+    result = runner.invoke(app, [str(tree_a), str(tree_a)])
+    assert len(json.loads(result.stdout)["entries"]) == 2

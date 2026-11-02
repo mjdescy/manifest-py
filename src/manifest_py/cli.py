@@ -1,12 +1,12 @@
 import sys
 from enum import StrEnum
-from functools import reduce
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from manifest_py.builder import ManifestBuilder
+from manifest_py.manifest import Manifest
 from manifest_py.serialize import dump_csv, dump_json, write_csv, write_json
 
 app = typer.Typer(help="Create a manifest of one or more directory trees.")
@@ -38,10 +38,7 @@ def main(
     ] = None,
 ):
     """Create a manifest (path, size, mtime, SHA-256) of directory trees."""
-    manifest = reduce(
-        lambda a, b: a.merge(b),
-        (ManifestBuilder.from_directory(str(r)) for r in roots),
-    )
+    manifest = Manifest.union(*(ManifestBuilder.from_directory(str(r)) for r in roots))
     try:
         if output is not None:
             if format is Format.json:

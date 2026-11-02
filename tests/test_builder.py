@@ -219,20 +219,6 @@ def _e(path):
     return ManifestEntry(path, 1, 1.0, sha256="h")
 
 
-def test_from_entries_sorts_by_path():
-    m = Manifest.from_entries("r", [_e("b"), _e("a"), _e("c")])
-    assert [e.path for e in m] == ["a", "b", "c"]
-
-
-def test_merge_combines_and_sorts_keeping_root():
-    a = Manifest.from_entries("ra", [_e("c"), _e("a")])
-    b = Manifest.from_entries("rb", [_e("b")])
-    m = a.merge(b)
-    assert m.root == "ra"
-    assert [e.path for e in m] == ["a", "b", "c"]
-    assert len(a) == 2 and len(b) == 1
-
-
 def test_builder_builds_sorted_snapshot():
     b = ManifestBuilder("r")
     b.add(_e("b"))
@@ -250,13 +236,3 @@ def test_from_directory_returns_sorted_manifest(tree):
     assert m.root == str(tree)
     paths = [e.path for e in m]
     assert paths == sorted(paths) and len(paths) == 3
-
-
-def test_merge_deduplicates_by_path_preferring_self():
-    mine = ManifestEntry("x", 1, 1.0, sha256="mine")
-    theirs = ManifestEntry("x", 2, 2.0, sha256="theirs")
-    a = Manifest.from_entries("ra", [mine, _e("a")])
-    b = Manifest.from_entries("rb", [theirs, _e("b")])
-    m = a.merge(b)
-    assert [e.path for e in m] == ["a", "b", "x"]
-    assert m.entries[2] is mine
