@@ -49,9 +49,7 @@ def test_union_deduplicates_by_path_earliest_argument_wins() -> None:
     first: ManifestEntry = _e("x", "1")
     second: ManifestEntry = _e("x", "2")
     third: ManifestEntry = _e("x", "3")
-    u: Manifest = Manifest.union(
-        _m(first), _m(second, _e("y")), _m(third)
-    )
+    u: Manifest = Manifest.union(_m(first), _m(second, _e("y")), _m(third))
     assert paths(u) == ["x", "y"]
     assert u.entries[0] is first
 
@@ -140,3 +138,41 @@ def test_diff_relative_root_roots_can_be_subdirectories() -> None:
     assert paths(d.removed) == ["/x/a/g"]
     assert paths(d.added) == ["/x/b/h"]
     assert paths(d.changed_after) == ["/x/b/f"]
+
+
+def test_content_hash_ignores_mtime_and_is_deterministic() -> None:
+    a = Manifest.from_entries(
+        [
+            ManifestEntry("/r/b", 2, 1.0, sha256="hb"),
+            ManifestEntry("/r/a", 1, 1.0, sha256="ha"),
+        ]
+    )
+    b = Manifest.from_entries(
+        [
+            ManifestEntry("/r/a", 1, 9.0, sha256="ha"),
+            ManifestEntry("/r/b", 2, 9.0, sha256="hb"),
+        ]
+    )
+    assert a.content_hash() == b.content_hash()
+
+
+def test_content_hash_detects_changes() -> None:
+    a = Manifest.from_entries([ManifestEntry("/r/a", 1, 1.0, sha256="ha")])
+    b = Manifest.from_entries([ManifestEntry("/r/a", 1, 1.0, sha256="hx")])
+    c = Manifest.from_entries([ManifestEntry("/r/a", 1, 1.0, error="ha")])
+    assert len({a.content_hash(), b.content_hash(), c.content_hash()}) == 3
+
+
+def test_metadata_for_manifest() -> None:
+    from manifest_py.manifest import ManifestMetadata
+
+    m = Manifest.from_entries(
+        [
+            ManifestEntry("/r/a", 3, 1.0, sha256="ha"),
+            ManifestEntry("/r/b", None, None, error="x"),
+        ]
+    )
+    md = ManifestMetadata.for_manifest(m, ["/r"])
+    assert (md.entry_count, md.total_size, md.roots) == (2, 3, ("/r",))
+    assert md.manifest_hash == m.content_hash()
+    assert md.to_dict()["roots"] == ["/r"]

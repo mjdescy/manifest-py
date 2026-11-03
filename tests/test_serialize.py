@@ -64,3 +64,23 @@ def test_write_json_file(tmp_path: Path) -> None:
     out: Path = tmp_path / "m.json"
     write_json(m, out)
     assert json.loads(out.read_text(encoding="utf-8")) == m.to_dict()
+
+
+def test_dump_json_with_metadata_precedes_entries() -> None:
+    from manifest_py.manifest import ManifestMetadata
+    from manifest_py.serialize import dump_metadata_csv, metadata_sidecar_path
+
+    m: Manifest = _manifest()
+    md = ManifestMetadata.for_manifest(m, ["/r", "/s"])
+    buf: io.StringIO = io.StringIO()
+    dump_json(m, buf, metadata=md)
+    data = json.loads(buf.getvalue())
+    assert list(data) == ["metadata", "entries"]
+    assert data["metadata"]["manifest_hash"] == m.content_hash()
+
+    out: io.StringIO = io.StringIO()
+    dump_metadata_csv(md, out)
+    rows = list(csv.reader(io.StringIO(out.getvalue())))
+    assert len(rows) == 2 and rows[0] == list(data["metadata"])
+    assert rows[1][rows[0].index("roots")] == "/r;/s"
+    assert str(metadata_sidecar_path("a/m.csv")) == "a/m.meta.csv"

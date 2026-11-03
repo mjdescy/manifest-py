@@ -1,11 +1,16 @@
 """In-memory manifest data model."""
 
+import hashlib
 import os
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, NamedTuple
 
-__all__ = ["Manifest", "ManifestDiff", "ManifestEntry"]
+__all__ = ["Manifest", "ManifestDiff", "ManifestEntry", "ManifestMetadata"]
+
+SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,9 +113,64 @@ class Manifest:
     def __len__(self) -> int:
         return len(self.entries)
 
+    def content_hash(self) -> str:
+        """Return a SHA-256 hex digest identifying the manifest's content.
+
+        Covers each entry's path, size and SHA-256 (or error), in path order.
+        mtime is excluded, matching what `diff` treats as a change. Fields
+        are length-prefixed so different entry lists cannot collide.
+        """
+        h = hashlib.sha256()
+        for e in self.entries:
+            for field in (e.path, e.size, e.sha256, e.error):
+                data: bytes = b"" if field is None else str(field).encode()
+                h.update(len(data).to_bytes(8, "big"))
+                h.update(data)
+                h.update(b"\x00" if field is None else b"\x01")
+        return h.hexdigest()
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible dict of the manifest."""
         return {"entries": [asdict(e) for e in self.entries]}
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestMetadata:
+    """Facts about a manifest: when and how it was made, and its digest."""
+
+    schema_version: int
+    created: str
+    tool_version: str
+    roots: tuple[str, ...]
+    entry_count: int
+    total_size: int
+    manifest_hash: str
+    hash_algorithm: str = "sha256"
+
+    @classmethod
+    def for_manifest(
+        cls, manifest: Manifest, roots: Iterable[str] = ()
+    ) -> ManifestMetadata:
+        """Describe `manifest`, computing its count, total size and hash."""
+        try:
+            tool_version: str = version("manifest-py")
+        except PackageNotFoundError:
+            tool_version = "unknown"
+        return cls(
+            schema_version=SCHEMA_VERSION,
+            created=datetime.now(UTC).isoformat(timespec="seconds"),
+            tool_version=tool_version,
+            roots=tuple(roots),
+            entry_count=len(manifest),
+            total_size=sum(e.size or 0 for e in manifest),
+            manifest_hash=manifest.content_hash(),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-compatible dict (`roots` becomes a list)."""
+        d: dict[str, Any] = asdict(self)
+        d["roots"] = list(self.roots)
+        return d
 
 
 class ManifestDiff(NamedTuple):

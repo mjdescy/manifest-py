@@ -170,3 +170,17 @@ def test_one_bad_root_among_good_fails(tree_a: Path, tmp_path: Path) -> None:
 def test_overlapping_roots_deduplicate_files(tree_a: Path) -> None:
     result: Result = runner.invoke(app, [str(tree_a), str(tree_a)])
     assert len(json.loads(result.stdout)["entries"]) == 2
+
+
+def test_csv_output_writes_metadata_sidecar(tree_a: Path, tmp_path: Path) -> None:
+    out: Path = tmp_path / "m.csv"
+    result: Result = runner.invoke(app, [str(tree_a), "-f", "csv", "-o", str(out)])
+    assert result.exit_code == 0
+    rows = list(csv.reader((tmp_path / "m.meta.csv").open(newline="")))
+    assert len(rows) == 2
+    assert rows[1][rows[0].index("entry_count")] == "2"
+
+
+def test_json_stdout_includes_metadata(tree_a: Path) -> None:
+    result: Result = runner.invoke(app, [str(tree_a)])
+    assert json.loads(result.stdout)["metadata"]["entry_count"] == 2
