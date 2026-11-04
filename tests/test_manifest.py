@@ -25,6 +25,29 @@ def test_iter_len_and_to_dict() -> None:
     assert m.to_dict()["entries"][0]["path"] == "a"
 
 
+def test_iter_yields_file_names_in_order() -> None:
+    m: Manifest = _m(_e("c.txt"), _e("a.txt"), _e("b.txt"))
+    names: list[str] = [entry.path for entry in m]
+    assert names == ["a.txt", "b.txt", "c.txt"]
+
+
+def test_iter_empty_manifest_yields_nothing() -> None:
+    assert list(Manifest(())) == []
+
+
+def test_iter_can_be_repeated() -> None:
+    m: Manifest = _m(_e("b"), _e("a"))
+    assert list(m) == list(m) == [_e("a"), _e("b")]
+
+
+def test_iter_returns_independent_iterators() -> None:
+    m: Manifest = _m(_e("a"), _e("b"))
+    first, second = iter(m), iter(m)
+    assert next(first) == _e("a")
+    assert next(second) == _e("a")
+    assert next(first) == _e("b")
+
+
 # --- union ------------------------------------------------------------------
 
 
